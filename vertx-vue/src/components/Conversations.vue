@@ -1,10 +1,10 @@
 <template>
     <div>
         <h1>CONVERSATIONS</h1>
-        <p v-if="eventbus.state == 0" class="connect-status">connecting... <button v-on:click="logout" class="logout">logout</button></p>
-        <p v-if="eventbus.state == 1" class="connect-status">connected <button v-on:click="logout" class="logout">logout</button></p>
-        <p v-if="eventbus.state == 2" class="connect-status">disconnecting... <button v-on:click="logout" class="logout">logout</button></p>
-        <p v-if="eventbus.state == 3" class="connect-status">disconnected <button v-on:click="logout" class="logout">logout</button></p>
+        <p v-if="vertx_eb.state == 0" class="connect-status">connecting... <button v-on:click="logout" class="logout">logout</button></p>
+        <p v-if="vertx_eb.state == 1" class="connect-status">connected <button v-on:click="logout" class="logout">logout</button></p>
+        <p v-if="vertx_eb.state == 2" class="connect-status">disconnecting... <button v-on:click="logout" class="logout">logout</button></p>
+        <p v-if="vertx_eb.state == 3" class="connect-status">disconnected <button v-on:click="logout" class="logout">logout</button></p>
         <div class="main">
             <contacts v-on:contacts-loaded="onContactsLoaded" v-on:open-chat="onOpenChat"></contacts>
             <chats :user="active_contact"></chats>

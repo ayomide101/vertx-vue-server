@@ -69,6 +69,8 @@
     }
 </style>
 <script>
+    import { EventBus } from '../events.js';
+
     export default {
         name: 'contacts',
         data() {
@@ -87,9 +89,29 @@
                 this.$emit('open-chat', contact);
             }
         },
-        created() {
+        mounted() {
+            const self = this;
             //emit event when contacts finished loading
-            this.$emit('contacts-loaded', this.contacts);
+
+            EventBus.$on('app.connected', () => {
+                const data = {
+                    action: "get-conversations",
+                    data: JSON.parse(localStorage.getItem('user'))
+                };
+
+                this.vertx_eb.send("api.data", data, {}, (err, message) => {
+                    if (err) {
+                        console.log('Something happened');
+                        console.error(err);
+                    } else {
+                        self.contacts = message.body;
+                        console.log(message.body);
+                        console.log(self.contacts[0].name);
+                        this.$emit('contacts-loaded', self.contacts);
+                    }
+                });
+            });
+
         }
     }
 </script>

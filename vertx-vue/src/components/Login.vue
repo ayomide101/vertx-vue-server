@@ -26,7 +26,7 @@
                     this.error = "Name is too short"
                 } else {
                     const self = this;
-                    this.$http.post("http://"+this.api+"/login", { name })
+                    this.$http.post("http://"+this.api+"/login", { name:this.name })
                         .then(function(data) {
                             console.log('Success');
                             console.log(data);
@@ -34,8 +34,7 @@
                             self.error = "FAILED TO CONNECT";
                         });
                     localStorage.setItem("user", JSON.stringify({
-                        name,
-                        id:"asdfadfasdf"
+                        name:this.name,
                     }));
                     this.$router.replace('conversations');
                 }

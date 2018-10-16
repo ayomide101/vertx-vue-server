@@ -2,18 +2,21 @@ package com.vertx.vue;
 
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
-import io.vertx.core.http.HttpServerOptions;
+import io.vertx.core.eventbus.Message;
+import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
+import io.vertx.ext.bridge.PermittedOptions;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.handler.StaticHandler;
 import io.vertx.ext.web.handler.sockjs.BridgeOptions;
-import io.vertx.ext.web.handler.sockjs.PermittedOptions;
 import io.vertx.ext.web.handler.sockjs.SockJSHandler;
 
 public class Server extends AbstractVerticle {
 
-    public static String INCOMING_ADDRESS  = "incoming.data";
-    public static String OUTGOING_ADDRESS = "outgoing.data";
-    public static String PING_ADDRESS = "ping.data";
+    private static final String API_ADDRESS = "api.data";
+    private static final String INCOMING_ADDRESS  = "incoming.data";
+    private static final String OUTGOING_ADDRESS = "outgoing.data";
+    private static final String PING_ADDRESS = "ping.data";
 
     @Override
     public void start(Future<Void> startFuture) throws Exception {
@@ -48,20 +51,48 @@ public class Server extends AbstractVerticle {
 
     private void setupRoutes(Router router) {
 
+        BridgeOptions bridgeOptions = setupEBAddress();
+
+        router.route("/sockjs/*").handler(SockJSHandler.create(vertx).bridge(bridgeOptions));
+
+        //Load the web browser UI via here
+        router.get("/*").handler(StaticHandler.create("webroot/"));
+    }
+
+    private BridgeOptions setupEBAddress() {
         //Setting the bridge options prevents internal address from leaking information out
         BridgeOptions bridgeOptions = new BridgeOptions()
                 //Outgoing traffic eventbus address - This is the address the eventbus address the browser would be able to listen on
                 .addOutboundPermitted(new PermittedOptions().setAddress(OUTGOING_ADDRESS))
                 .addOutboundPermitted(new PermittedOptions().setAddress(INCOMING_ADDRESS))
                 .addOutboundPermitted(new PermittedOptions().setAddress(PING_ADDRESS));
-                //Incoming traffic eventbus address - This is the address the eventbus address the browser would be able to communicate with us on
+        //Incoming traffic eventbus address - This is the address the eventbus address the browser would be able to communicate with us on
 //                .addInboundPermitted(new PermittedOptions().setAddress(INCOMING_ADDRESS))
 //                .addInboundPermitted(new PermittedOptions().setAddress(PING_ADDRESS));
 
-        router.route("/sockjs/*").handler(SockJSHandler.create(vertx).bridge(bridgeOptions));
+        bridgeOptions
+                .addInboundPermitted(new PermittedOptions().setAddress(API_ADDRESS))
+                .addOutboundPermitted(new PermittedOptions().setAddress(API_ADDRESS));
 
-        //Load the web browser UI via here
-        router.get("/*").handler(StaticHandler.create("webroot/"));
+
+        vertx.eventBus().consumer(API_ADDRESS, this::apiHandler);
+
+        return bridgeOptions;
+    }
+
+    private void apiHandler(Message<JsonObject> message) {
+        System.out.println("API Handler");
+        System.out.println(String.format("Message -> %s", message.body().encode()));
+        String action = message.body().getString("action");
+        JsonObject data = message.body().getJsonObject("data");
+        switch (action) {
+            case "get-conversations":
+                message.reply(new JsonArray()
+                        .add(new JsonObject().put("name", "Ayomide").put("status", "online").put("id", "ayomide-online"))
+                        .add(new JsonObject().put("name", "Folashade").put("status", "Away").put("id", "folashade-online"))
+                );
+                break;
+        }
     }
 
     private void pings() {
