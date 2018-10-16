@@ -1,34 +1,30 @@
 plugins {
-    id 'java'
-    id 'com.github.johnrengelman.shadow' version '1.2.4'
+    id 'application'
+    id 'com.github.johnrengelman.shadow' version '2.0.2'
 }
-
-group 'intro-vertx'
-version '1.0-SNAPSHOT'
-def vertxVersion = '3.4.1'
-sourceCompatibility = 1.8
-def mainClassName = 'io.vertx.core.Launcher'
-
-def mainVerticleName = 'com.vertx.vue.Server'
-
-sourceCompatibility = 1.8
-apply plugin: 'java'
-apply plugin: 'com.github.johnrengelman.shadow'
 
 repositories {
-    mavenCentral()
-    maven {
-        url "https://oss.sonatype.org/content/repositories/snapshots"
-    }
+    jcenter()
 }
 
+version = '1.0-SNAPSHOT'
+sourceCompatibility = '1.8'
+mainClassName = 'io.vertx.core.Launcher'
+
+def vertxVersion = '3.5.2'
+def mainVerticleName = 'com.vertx.vue.Server'
+def watchForChange = 'src/**/*'
+def doOnChange = './gradlew classes'
+
 dependencies {
-    testCompile group: 'junit', name: 'junit', version: '4.12'
+    compile "io.vertx:vertx-core:$vertxVersion"
     compile "io.vertx:vertx-web:$vertxVersion"
     compile "io.vertx:vertx-core:$vertxVersion"
     compile "io.vertx:vertx-codegen:$vertxVersion"
     compile "io.vertx:vertx-tcp-eventbus-bridge:$vertxVersion"
     compile "io.vertx:vertx-hazelcast:$vertxVersion"
+    testCompile "junit:junit:4.12"
+    testCompile "io.vertx:vertx-unit:$vertxVersion"
 }
 
 shadowJar {
@@ -41,6 +37,10 @@ shadowJar {
     }
 }
 
+run {
+    args = ['run', mainVerticleName, "--redeploy=$watchForChange", "--launcher-class=$mainClassName", "--on-redeploy=$doOnChange"]
+}
+
 task wrapper(type: Wrapper) {
-    gradleVersion = '3.4.1'
+    gradleVersion = '4.5.1'
 }
