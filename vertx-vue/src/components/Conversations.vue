@@ -34,11 +34,10 @@
         box-shadow: 0 3px 6px rgba(0, 0, 0, 0.16), 0 3px 6px rgba(0, 0, 0, 0.23);
         border-left: 1px solid #eee;
         border-top: 1px solid #eee;
-        margin: 0 30px 30px;
         width: 800px;
         background: #ffffff;
+        margin:30px auto;
     }
-
 
     .round-img {
         width: 40px;
@@ -50,15 +49,14 @@
 
 
     h1 {
-        text-align: start;
-        margin-left: 30px;
-        margin-bottom: 0;
+        text-align: center;
+        margin:30px 10px auto;
     }
 
     .connect-status {
-        text-align: start;
         margin-left: 34px;
         margin-top: 0;
+        text-align: center;
     }
 </style>
 
