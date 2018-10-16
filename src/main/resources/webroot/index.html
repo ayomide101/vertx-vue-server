@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Vertx - Vue integration</title>
+</head>
+<body>
+<script src="sockjs/sockjs.min.js"></script>
+<script src="vue.js"></script>
+<script src="vertx3-eventbus-client/vertx-eventbus.js"></script>
+<script>
+    var eventbus = new EventBus('/sockjs');
+
+    eventbus.onopen = () => {
+        console.log('Connection opened');
+      /*eventbus.registerHandler('incoming.data', (err, message) => {
+        var res = message.body;
+        console.log(message);
+        if (res != null) {
+
+        }
+      });*/
+
+      eventbus.registerHandler('outgoing.data', (err, message) => {
+        console.log(err);
+        var res = message.body;
+        console.log(message);
+        if (res != null) {
+
+        }
+      });
+      eventbus.registerHandler('ping.data', (err, message) => {
+        console.log(err);
+        var res = message.body;
+        message.reply('Seen');
+        console.log(message);
+        if (res != null) {
+
+        }
+      });
+    }
+</script>
+</body>
+</html>
