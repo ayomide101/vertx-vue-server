@@ -91,8 +91,8 @@
             },
             logout: function (e) {
                 e.preventDefault();
-                this.state.isLoggedIn = false;
-                this.$router.push('/');
+                localStorage.removeItem('user');
+                this.$router.replace('/');
             }
         }
     }

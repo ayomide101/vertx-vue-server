@@ -33,8 +33,11 @@
                         }, function(error) {
                             self.error = "FAILED TO CONNECT";
                         });
-                    this.state.isLoggedIn = true;
-                    this.$router.push('conversations');
+                    localStorage.setItem("user", JSON.stringify({
+                        name,
+                        id:"asdfadfasdf"
+                    }));
+                    this.$router.replace('conversations');
                 }
             }
         }

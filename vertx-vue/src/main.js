@@ -8,33 +8,22 @@ import EventBus from 'vertx3-eventbus-client'
 Vue.config.productionTip = false
 
 Vue.mixin({
-    data: function () {
+    data() {
         return {
             get eventbus() {
-                // return new EventBus('127.0.0.1:8081/sockjs');
-                return {
-                    state : 1
-                };
+                return new EventBus('http://127.0.0.1:8081/sockjs');
             },
             get api() {
                 return '127.0.0.1:8081';
-            },
-            get state() {
-                return {
-                    isLoggedIn:false,
-                    user : {
-
-                    }
-                }
-            },
+            }
         }
     }
 });
 
 /* eslint-disable no-new */
 new Vue({
-  el: '#app',
-  router,
-  components: { App },
-  template: '<App/>'
+    el: '#app',
+    router,
+    components: {App},
+    template: '<App/>'
 });

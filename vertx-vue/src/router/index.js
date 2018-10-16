@@ -7,11 +7,18 @@ import Login from '@/components/Login'
 Vue.use(Router);
 Vue.use(Resource);
 
-export default new Router({
+const router = new Router({
     routes: [
+
         {
             path: '/',
-            name: 'login',
+            redirect: {
+                name: "login"
+            }
+        },
+        {
+            path: "/login",
+            name: "login",
             component: Login
         },
         {
@@ -20,4 +27,19 @@ export default new Router({
             component: Conversations
         }
     ]
-})
+});
+
+router.beforeEach((to, from, next) => {
+    // redirect to login page if not logged in and trying to access a restricted page
+    const publicPages = ['/login'];
+    const authRequired = !publicPages.includes(to.path);
+    const loggedIn = localStorage.getItem('user');
+
+    if (authRequired && !loggedIn) {
+        return next('/login');
+    }
+
+    next();
+});
+
+export default router;
