@@ -11,21 +11,21 @@ import io.vertx.ext.web.handler.StaticHandler;
 import io.vertx.ext.web.handler.sockjs.BridgeOptions;
 import io.vertx.ext.web.handler.sockjs.SockJSHandler;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 public class Server extends AbstractVerticle {
 
     private static final String API_ADDRESS = "api.data";
-    private static final String INCOMING_ADDRESS  = "incoming.data";
-    private static final String OUTGOING_ADDRESS = "outgoing.data";
-    private static final String PING_ADDRESS = "ping.data";
+    private static final String MESSAGE_ADDRESS = "^message.data.*";
+    private static final String USERS_ADDRESS = "users.data";
+    private static final JsonArray users = new JsonArray();
 
     @Override
     public void start(Future<Void> startFuture) throws Exception {
         //Create a router to handle all the requests coming into the server
         Router router = Router.router(vertx);
         setupRoutes(router);
-
-        //Pings
-        pings();
 
         //Create a http server to listen specified port
         getVertx()
@@ -63,16 +63,13 @@ public class Server extends AbstractVerticle {
         //Setting the bridge options prevents internal address from leaking information out
         BridgeOptions bridgeOptions = new BridgeOptions()
                 //Outgoing traffic eventbus address - This is the address the eventbus address the browser would be able to listen on
-                .addOutboundPermitted(new PermittedOptions().setAddress(OUTGOING_ADDRESS))
-                .addOutboundPermitted(new PermittedOptions().setAddress(INCOMING_ADDRESS))
-                .addOutboundPermitted(new PermittedOptions().setAddress(PING_ADDRESS));
         //Incoming traffic eventbus address - This is the address the eventbus address the browser would be able to communicate with us on
 //                .addInboundPermitted(new PermittedOptions().setAddress(INCOMING_ADDRESS))
 //                .addInboundPermitted(new PermittedOptions().setAddress(PING_ADDRESS));
-
-        bridgeOptions
                 .addInboundPermitted(new PermittedOptions().setAddress(API_ADDRESS))
-                .addOutboundPermitted(new PermittedOptions().setAddress(API_ADDRESS));
+                .addOutboundPermitted(new PermittedOptions().setAddress(API_ADDRESS))
+                .addOutboundPermitted(new PermittedOptions().setAddressRegex(MESSAGE_ADDRESS))
+                .addOutboundPermitted(new PermittedOptions().setAddressRegex(USERS_ADDRESS));
 
 
         vertx.eventBus().consumer(API_ADDRESS, this::apiHandler);
@@ -86,28 +83,84 @@ public class Server extends AbstractVerticle {
         String action = message.body().getString("action");
         JsonObject data = message.body().getJsonObject("data");
         switch (action) {
-            case "get-conversations":
-                message.reply(new JsonArray()
-                        .add(new JsonObject().put("name", "Ayomide").put("status", "online").put("id", "ayomide-online"))
-                        .add(new JsonObject().put("name", "Folashade").put("status", "Away").put("id", "folashade-online"))
-                );
+            case "get-contacts":
+                handleGetConversations(message, action, data);
                 break;
+            case "get-conversation":
+                handleGetConversation(message, action, data);
+                break;
+            case "send-message":
+                handleSendMessage(message, action, data);
+                break;
+            case "login":
+                handleLogin(message, action, data);
+                break;
+            case "logout":
+                handleLogout(message, action, data);
         }
     }
 
-    private void pings() {
-        //Send pings out every 5seconds
-        vertx.setPeriodic(5000, event -> {
-            vertx.eventBus().send(PING_ADDRESS, "Hi", event1 -> {
-                System.out.println(String.format("Response received: %s", event1.result().body()));
-            });
-        });
+    private void handleLogout(Message<JsonObject> message, String action, JsonObject user) {
+        System.out.println("Loggedout data ->" + user.encode());
+        users.getList().remove(user);
+        message.reply("loggedout");
+        vertx.eventBus().publish(USERS_ADDRESS, new JsonObject().put("action", "loggedout").put("data", user));
+    }
 
-        //Listen for messages on our pong-address
-        vertx.eventBus().consumer(PING_ADDRESS, event -> {
-            System.out.println(String.format("Event -> address: %s | body: %s", event.address(), event.body()));
-            event.reply("Hello");
-        });
+    private void handleLogin(Message<JsonObject> message, String action, JsonObject user) {
+        System.out.println("Loggein data ->" + user.encode());
+        users.add(user);
+        message.reply("LoggedIn");
+        vertx.eventBus().publish(USERS_ADDRESS, new JsonObject().put("action", "loggedin").put("data", user));
+    }
+
+    private void handleSendMessage(Message<JsonObject> message, String action, JsonObject data) {
+        JsonObject chat = data.getJsonObject("message");
+        JsonObject owner = data.getJsonObject("owner");
+        JsonObject resp = data.getJsonObject("resp");
+
+        //Unique identifier for the conversation
+        String conversation_id = (owner.getString("name") +"-"+resp.getString("name")).toLowerCase();
+        String conversation_id_rev =  (resp.getString("name")+"-"+owner.getString("name")).toLowerCase();
+
+        vertx.eventBus().publish("message.data."+conversation_id, data);
+        vertx.eventBus().publish("message.data."+conversation_id_rev, data);
+
+        message.reply(new JsonObject());
+    }
+
+    private void handleGetConversations(Message<JsonObject> message, String action, JsonObject user) {
+        //Doing this so we don't send back the currently logged in user
+        List users_list = users
+                .stream()
+                .filter(o -> !((JsonObject) o).getString("name").equals(user.getString("name")))
+                .collect(Collectors.toList());
+
+        message.reply(new JsonArray(users_list));
+    }
+
+    private void handleGetConversation(Message<JsonObject> message, String action, JsonObject data) {
+        JsonObject owner = data.getJsonObject("owner");
+        JsonObject resp = data.getJsonObject("resp");
+
+        //Unique identifier for the conversation
+        String conversation_id = (owner.getString("name") +"-"+resp.getString("name")).toLowerCase();
+        String conversation_id_rev =  (resp.getString("name")+"-"+owner.getString("name")).toLowerCase();
+
+        System.out.println(String.format("Conversation ID - %s | %s", conversation_id, conversation_id_rev));
+
+        JsonObject conversations = vertx.fileSystem().readFileBlocking("conversations.json").toJsonObject();
+
+        if (conversations.containsKey(conversation_id) || conversations.containsKey(conversation_id_rev)) {
+            JsonArray conversation = conversations.getJsonArray(conversation_id);
+            if (conversation == null) {
+                conversation = conversations.getJsonArray(conversation_id_rev);
+            }
+            message.reply(conversation);
+        } else {
+            //Send back empty array
+            message.reply(new JsonArray());
+        }
     }
 
     @Override
