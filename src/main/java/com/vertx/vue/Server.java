@@ -37,7 +37,7 @@ public class Server extends AbstractVerticle {
                 //Assign the router to intercept all the requests
                 .requestHandler(router::accept)
 
-                //Server listening on specified
+                //Server listening on specified 8081
                 .listen(8081, serverResult -> {
                     //Vertx is event driven, wait for an event that
                     //Server has been created
@@ -52,16 +52,28 @@ public class Server extends AbstractVerticle {
                 });
     }
 
+    /**
+     * SETUP ROUTES
+     * creates routes for Websocket JS connection
+     * creates routes for static web resources
+     * @param router Router
+     */
     private void setupRoutes(Router router) {
 
+        //Setup EVentBus permissions
         BridgeOptions bridgeOptions = setupEBAddress();
-
+        //Setup the route for WebSocket SockJs connection
         router.route("/sockjs/*").handler(SockJSHandler.create(vertx).bridge(bridgeOptions));
 
-        //Load the web browser UI via here
+        //Setup route to load web resources such as CSS, HTML, JAVASCRIPT files
+        //Put files in src/resources folder
         router.get("/*").handler(StaticHandler.create("webroot/"));
     }
 
+    /**
+     * Setup incoming and outgoing permissions for Eventbus
+     * @return BridgeOptions client
+     */
     private BridgeOptions setupEBAddress() {
         //Setting the bridge options prevents internal address from leaking information out
         BridgeOptions bridgeOptions = new BridgeOptions()
@@ -73,17 +85,23 @@ public class Server extends AbstractVerticle {
                 .addOutboundPermitted(new PermittedOptions().setAddress(USERS_ADDRESS));
 
 
+        //setup server to receive incoming request via the API_ADDRESS
         vertx.eventBus().consumer(API_ADDRESS, this::apiHandler);
 
         return bridgeOptions;
     }
 
+    /**
+     * API Handler
+     * Processes the JSON messages received through API_ADDRESS
+     * @param message communication client
+     */
     private void apiHandler(Message<JsonObject> message) {
         System.out.println("API Handler");
         System.out.println(String.format("Message -> %s", message.body().encode()));
-        String action = message.body().getString("action");
-        JsonObject data = message.body().getJsonObject("data");
-        switch (action) {
+        String action = message.body().getString("action"); //The action user wants to perform
+        JsonObject data = message.body().getJsonObject("data"); //Accompanying data
+        switch (action) { //switch case the action and call the appropriate method
             case "get-contacts":
                 handleGetContacts(message, action, data);
                 break;
@@ -101,6 +119,14 @@ public class Server extends AbstractVerticle {
         }
     }
 
+    /**
+     * LOUGOUT
+     * Removes user from the users list
+     * publish a message to all clients that user logged out
+     * @param message message to be used to reply to client
+     * @param action String action
+     * @param user Json user data
+     */
     private void handleLogout(Message<JsonObject> message, String action, JsonObject user) {
         System.out.println("Loggedout data ->" + user.encode());
 
@@ -116,6 +142,14 @@ public class Server extends AbstractVerticle {
         vertx.eventBus().publish(USERS_ADDRESS, new JsonObject().put("action", "loggedout").put("data", user));
     }
 
+    /**
+     * LOGIN
+     * Adds user from the users list
+     * publish a message to all clients that user logged in
+     * @param message message to be used to reply to client
+     * @param action String action
+     * @param user Json user data
+     */
     private void handleLogin(Message<JsonObject> message, String action, JsonObject user) {
         System.out.println("Loggein data ->" + user.encode());
         users.add(user);
@@ -123,13 +157,22 @@ public class Server extends AbstractVerticle {
         vertx.eventBus().publish(USERS_ADDRESS, new JsonObject().put("action", "loggedin").put("data", user));
     }
 
+    /**
+     * SEND MESSAGE
+     * publish a message on a conversation address
+     * @param message message to be used to reply to client
+     * @param action String action
+     * @param data Json chat data - {message:{}, owner:{}, resp:{}}
+     */
     private void handleSendMessage(Message<JsonObject> message, String action, JsonObject data) {
         JsonObject chat = data.getJsonObject("message");
         JsonObject owner = data.getJsonObject("owner");
         JsonObject resp = data.getJsonObject("resp");
 
         //Unique identifier for the conversation
+        //todo: use more random conversation_id
         String conversation_id = (owner.getString("name") +"-"+resp.getString("name")).toLowerCase();
+        //Creating a reversed version of the conversation_id from the perspective of the resp, resp will be owner
         String conversation_id_rev =  (resp.getString("name")+"-"+owner.getString("name")).toLowerCase();
 
         //Persist the conversation for user later
@@ -141,17 +184,37 @@ public class Server extends AbstractVerticle {
         message.reply(new JsonObject());//Reply success
     }
 
+    /**
+     * STORE CHAT
+     * stores chat in memory, can be expanded to keep chat in permanent storage like MongoDB
+     * @param conversation_id unique conversation identifier
+     * @param conversation_id_rev unique conversation identifier
+     * @param chat Json chat data - {message:'', sender:'name of sender', time:''}
+     */
     private void storeChat(String conversation_id, String conversation_id_rev, JsonObject chat) {
         //Persist the conversation
         getChat(conversation_id, conversation_id_rev).add(chat); //Storing conversation in memory
         //todo: Persist the conversation into a database
     }
 
-
+    /**
+     * Combine name of sender and recipient
+     * @param owner_name sender_name
+     * @param resp_name recipient_name
+     * @return unqiue conversation_id
+     */
     private String createConversationId(String owner_name, String resp_name) {
         return (owner_name + "-"+resp_name).toLowerCase();
     }
 
+    /**
+     * Get conversation stored in memory
+     * Checks if conversation already exists in memory using conversation_id or conversation_id_rev
+     * Creates only one conversation and nothing more
+     * @param conversation_id unique identifier
+     * @param conversation_id_rev unique identifier
+     * @return JsonArray of chats
+     */
     private JsonArray getChat(String conversation_id, String conversation_id_rev) {
         if (conversations.containsKey(conversation_id) || conversations.containsKey(conversation_id_rev)) {
             System.out.println("Conversation found");
@@ -171,6 +234,13 @@ public class Server extends AbstractVerticle {
         }
     }
 
+    /**
+     * Get all the currently connected clients
+     * Filters the sender from the users logged in
+     * @param message communication client
+     * @param action action
+     * @param user sender data
+     */
     private void handleGetContacts(Message<JsonObject> message, String action, JsonObject user) {
         //Doing this so we don't send back the currently logged in user
         List users_list = users
@@ -181,6 +251,12 @@ public class Server extends AbstractVerticle {
         message.reply(new JsonArray(users_list));
     }
 
+    /**
+     * Returns all the conversation stored in memory
+     * @param message communication client
+     * @param action string action
+     * @param data JsonArray participant of conversation  - {owner:{}, resp:{}}
+     */
     private void handleGetConversation(Message<JsonObject> message, String action, JsonObject data) {
         JsonObject owner = data.getJsonObject("owner");
         JsonObject resp = data.getJsonObject("resp");
@@ -194,6 +270,13 @@ public class Server extends AbstractVerticle {
         message.reply(getChat(conversation_id, conversation_id_rev));
     }
 
+    /**
+     * Stop event from Vertx
+     * Verticle will be killed
+     * Do any clean up here
+     * @param stopFuture Handler
+     * @throws Exception Throw exception if Verticle shutdown fails
+     */
     @Override
     public void stop(Future<Void> stopFuture) throws Exception {
         super.stop(stopFuture);
