@@ -17,9 +17,12 @@ import java.util.stream.Collectors;
 public class Server extends AbstractVerticle {
 
     private static final String API_ADDRESS = "api.data";
-    private static final String MESSAGE_ADDRESS = "^message.data.*";
+    private static final String MESSAGE_ADDRESS_REGEX = "^message.data.*";
+    private static final String MESSAGE_ADDRESS = "message.data.";
     private static final String USERS_ADDRESS = "users.data";
-    private static final JsonArray users = new JsonArray();
+
+    private static JsonArray users = new JsonArray();
+    private static JsonObject conversations = new JsonObject();
 
     @Override
     public void start(Future<Void> startFuture) throws Exception {
@@ -64,12 +67,10 @@ public class Server extends AbstractVerticle {
         BridgeOptions bridgeOptions = new BridgeOptions()
                 //Outgoing traffic eventbus address - This is the address the eventbus address the browser would be able to listen on
         //Incoming traffic eventbus address - This is the address the eventbus address the browser would be able to communicate with us on
-//                .addInboundPermitted(new PermittedOptions().setAddress(INCOMING_ADDRESS))
-//                .addInboundPermitted(new PermittedOptions().setAddress(PING_ADDRESS));
                 .addInboundPermitted(new PermittedOptions().setAddress(API_ADDRESS))
                 .addOutboundPermitted(new PermittedOptions().setAddress(API_ADDRESS))
-                .addOutboundPermitted(new PermittedOptions().setAddressRegex(MESSAGE_ADDRESS))
-                .addOutboundPermitted(new PermittedOptions().setAddressRegex(USERS_ADDRESS));
+                .addOutboundPermitted(new PermittedOptions().setAddressRegex(MESSAGE_ADDRESS_REGEX))
+                .addOutboundPermitted(new PermittedOptions().setAddress(USERS_ADDRESS));
 
 
         vertx.eventBus().consumer(API_ADDRESS, this::apiHandler);
@@ -84,7 +85,7 @@ public class Server extends AbstractVerticle {
         JsonObject data = message.body().getJsonObject("data");
         switch (action) {
             case "get-contacts":
-                handleGetConversations(message, action, data);
+                handleGetContacts(message, action, data);
                 break;
             case "get-conversation":
                 handleGetConversation(message, action, data);
@@ -102,7 +103,15 @@ public class Server extends AbstractVerticle {
 
     private void handleLogout(Message<JsonObject> message, String action, JsonObject user) {
         System.out.println("Loggedout data ->" + user.encode());
-        users.getList().remove(user);
+
+        //Remove users that match the user we're trying to remove
+        List users_list = users
+                .stream()
+                .filter(o -> !((JsonObject) o).getString("name").equals(user.getString("name")))
+                .collect(Collectors.toList());
+
+        users = new JsonArray(users_list);
+
         message.reply("loggedout");
         vertx.eventBus().publish(USERS_ADDRESS, new JsonObject().put("action", "loggedout").put("data", user));
     }
@@ -123,13 +132,46 @@ public class Server extends AbstractVerticle {
         String conversation_id = (owner.getString("name") +"-"+resp.getString("name")).toLowerCase();
         String conversation_id_rev =  (resp.getString("name")+"-"+owner.getString("name")).toLowerCase();
 
-        vertx.eventBus().publish("message.data."+conversation_id, data);
-        vertx.eventBus().publish("message.data."+conversation_id_rev, data);
+        //Persist the conversation for user later
+        storeChat(conversation_id, conversation_id_rev, chat);
 
-        message.reply(new JsonObject());
+        vertx.eventBus().publish(MESSAGE_ADDRESS+conversation_id, data);
+        vertx.eventBus().publish(MESSAGE_ADDRESS+conversation_id_rev, data);
+
+        message.reply(new JsonObject());//Reply success
     }
 
-    private void handleGetConversations(Message<JsonObject> message, String action, JsonObject user) {
+    private void storeChat(String conversation_id, String conversation_id_rev, JsonObject chat) {
+        //Persist the conversation
+        getChat(conversation_id, conversation_id_rev).add(chat); //Storing conversation in memory
+        //todo: Persist the conversation into a database
+    }
+
+
+    private String createConversationId(String owner_name, String resp_name) {
+        return (owner_name + "-"+resp_name).toLowerCase();
+    }
+
+    private JsonArray getChat(String conversation_id, String conversation_id_rev) {
+        if (conversations.containsKey(conversation_id) || conversations.containsKey(conversation_id_rev)) {
+            System.out.println("Conversation found");
+            System.out.println(String.format("Conversations -> %s", conversations.encode()));
+            JsonArray conversation = conversations.getJsonArray(conversation_id);
+            if (conversation == null) {
+                conversation = conversations.getJsonArray(conversation_id_rev);
+            }
+            System.out.println(String.format("Conversation -> %s", conversation.encode()));
+            return conversation;
+        } else {
+            //Create a new conversation
+            System.out.println("Conversation not found creating a new one");
+            JsonArray chats = new JsonArray();
+            conversations.put(conversation_id, chats);
+            return chats;
+        }
+    }
+
+    private void handleGetContacts(Message<JsonObject> message, String action, JsonObject user) {
         //Doing this so we don't send back the currently logged in user
         List users_list = users
                 .stream()
@@ -144,23 +186,12 @@ public class Server extends AbstractVerticle {
         JsonObject resp = data.getJsonObject("resp");
 
         //Unique identifier for the conversation
-        String conversation_id = (owner.getString("name") +"-"+resp.getString("name")).toLowerCase();
-        String conversation_id_rev =  (resp.getString("name")+"-"+owner.getString("name")).toLowerCase();
+        String conversation_id = createConversationId(owner.getString("name"), resp.getString("name"));
+        String conversation_id_rev =  createConversationId(resp.getString("name"), owner.getString("name"));
 
         System.out.println(String.format("Conversation ID - %s | %s", conversation_id, conversation_id_rev));
 
-        JsonObject conversations = vertx.fileSystem().readFileBlocking("conversations.json").toJsonObject();
-
-        if (conversations.containsKey(conversation_id) || conversations.containsKey(conversation_id_rev)) {
-            JsonArray conversation = conversations.getJsonArray(conversation_id);
-            if (conversation == null) {
-                conversation = conversations.getJsonArray(conversation_id_rev);
-            }
-            message.reply(conversation);
-        } else {
-            //Send back empty array
-            message.reply(new JsonArray());
-        }
+        message.reply(getChat(conversation_id, conversation_id_rev));
     }
 
     @Override
